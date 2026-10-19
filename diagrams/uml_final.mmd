@@ -1,0 +1,69 @@
+classDiagram
+    %% Final architecture matches pawpal_system.py.
+    %% Task.time is optional; Task due dates are calendar dates without timezone data.
+    %% Lists returned by Scheduler and Owner contain (pet, task) pairs.
+    %% generate_plan returns a dictionary, not a DailyPlan object.
+    %% mark_task_complete returns the new Task or None; Task.mark_complete only sets status.
+
+    class Task {
+        +Dictionary PRIORITIES$
+        +String task_id
+        +String description
+        +int duration_minutes
+        +String frequency
+        +String priority
+        +bool completed
+        +String time
+        +Date due_date
+        +__init__(description, duration_minutes, frequency, priority, completed, time, due_date) void
+        +mark_complete() void
+        +reset_completion() void
+    }
+
+    class Pet {
+        +String name
+        +int age_months
+        +String species
+        +List~String~ care_needs
+        +List~Task~ tasks
+        +__init__(name, age_months, species) void
+        +add_task(task) void
+        -_find_task(task_id) Task
+        +edit_task(task_id, description, duration_minutes, frequency, priority, time, due_date) void
+        +remove_task(task_id) void
+        +update_care_needs(needs) void
+    }
+
+    class Owner {
+        +String name
+        +int available_minutes
+        +Dictionary preferences
+        +List~Pet~ pets
+        +__init__(name, available_minutes) void
+        +update_available_time(minutes) void
+        +add_pet(pet) void
+        +remove_pet(pet) void
+        +update_preference(key, value) void
+        +get_all_tasks() List
+    }
+
+    class Scheduler {
+        +Owner owner
+        +__init__(owner) void
+        +get_pending_tasks(date) List
+        +filter_tasks(completed, pet_name, due_on) List
+        +sort_by_time(tasks) List
+        +sort_tasks(tasks) List
+        +detect_conflicts(tasks) List
+        +find_next_available_slot(duration_minutes, date, earliest, latest, exclude_task_id) String
+        +generate_plan(date) Dictionary
+        +mark_task_complete(task_id, completed_on) Task
+    }
+
+    Owner o-- "0..*" Pet : manages
+    Pet o-- "0..*" Task : stores
+    Scheduler --> "1" Owner : retrieves all tasks via get_all_tasks
+    Scheduler ..> Pet : adds recurring tasks to the same pet
+    Scheduler ..> Task : sorts filters checks and completes
+    %% storage.py supplies save_owner/load_owner functions; it adds no domain classes.
+    %% find_next_available_slot returns an HH:MM string or None.

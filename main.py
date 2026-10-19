@@ -92,6 +92,13 @@ def main() -> None:
     if not plan["warnings"]:
         print("No tasks share the same date and time.")
 
+    suggested_time = scheduler.find_next_available_slot(
+        cat.tasks[0].duration_minutes, date=cat.tasks[0].due_date,
+        earliest="17:30", exclude_task_id=cat.tasks[0].task_id,
+    )
+    print(f"\nNext available time for Skibidi's feeding after 17:30: {suggested_time}")
+    print("The suggestion checks durations across all pets; no task is moved automatically.")
+
     print(f"\nScheduled: {len(plan['scheduled_tasks'])} tasks")
     print(f"Total duration: {plan['total_duration']} minutes")
     print(f"Remaining time: {plan['remaining_minutes']} minutes")

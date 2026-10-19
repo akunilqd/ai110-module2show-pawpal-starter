@@ -4,102 +4,102 @@
 
 **a. Initial design**
 
-My design uses four classes:
-
-- **Owner:** Manages available time, preferences, and pets.
-- **Pet:** Stores pet information and manages care needs and tasks.
-- **DailyPlan:** Holds scheduled and unscheduled tasks, calculates remaining time,
-  and explains the plan.
-- **Scheduler:** Sorts tasks and creates a plan using availability and preferences.
-
-An Owner has Pets, and each planned task references its Pet. The Scheduler reads
-these objects without duplicating their data.
+My original design used Owner for availability and pets, Pet for care needs and
+tasks, DailyPlan for the schedule and explanation, and Scheduler for planning.
+Keeping these responsibilities separate made the relationships easier to explain.
 
 **b. Design changes**
 
-I renamed `time` to `available_minutes` for clarity, added `edit_task()` to support
-editing, and made total duration calculated to avoid outdated values.
-
-To match Step 1, I replaced DailyPlan with Task, which stores description,
-duration, frequency, priority, and completion status. Plans are now dictionaries.
-Owner.get_all_tasks() returns every pet's tasks paired with its pet, and Scheduler
-uses this method to plan across multiple pets. The implementation validates inputs,
-tracks remaining time, and skips completed tasks. Daily and weekly completion now
-creates a dated follow-up through Scheduler. The Streamlit UI uses these classes
-and stores the Owner in session state.
-
----
+I replaced DailyPlan with Task to match the project requirements. Task stores an
+activity's duration, time, due date, frequency, priority, and status; plans are
+now dictionaries. Owner.get_all_tasks() returns pet-task pairs so Scheduler can
+work across all pets without losing ownership. I also moved recurrence entirely
+into Scheduler and removed the extra next_occurrence reference and duplicate
+completion method. The final UML reflects these decisions.
+Persistence lives in storage.py as save/load functions, so the domain still has
+four classes. An optional next-slot search adds duration-aware suggestions.
 
 ## 2. Scheduling Logic and Tradeoffs
 
 **a. Constraints and priorities**
 
-The scheduler considers completion status, due date, priority, and available
-minutes. It can prefer shorter tasks when priorities match. Only unfinished tasks
-due by the plan date are considered, and tasks cannot exceed the remaining budget.
+The scheduler selects unfinished tasks due by the plan date, orders them by
+priority, and fits them into the available minutes. An optional preference favors
+shorter tasks when priorities match. Time sorting is a separate display choice.
 
 **b. Tradeoffs**
 
 Conflict detection checks identical due dates and start times instead of full
-duration overlaps. Grouping tasks by date and time keeps the logic simple and
-produces warnings without interrupting planning. However, an 08:00 task lasting
-30 minutes and an 08:15 task will not trigger a warning. This is reasonable for
-the first version; checking intervals would make a future version more accurate.
-
----
+duration overlaps. This keeps the code understandable and returns warnings without
+stopping the app. However, an 08:00 task lasting 30 minutes and an 08:15 task will
+not trigger a warning. The greedy time-budget plan is also easy to follow but does
+not guarantee the best possible combination of tasks.
+The separate next-slot search checks duration intervals when suggesting a new
+time. JSON snapshots keep persistence simple, but users must explicitly save and
+load, and the file is not a multi-user database.
 
 ## 3. AI Collaboration
 
 **a. How you used AI**
 
-I used AI to brainstorm the UML, create and implement the classes, review their
-relationships, format the terminal schedule, and draft tests and docstrings.
-AI suggested using Owner.get_all_tasks() for multi-pet scheduling and separate
-Task objects for each pet so completion status is independent. I accepted both.
-Questions about how Scheduler retrieves tasks and how to print the plan were
-especially helpful for understanding how the objects work together.
+Chat explanations helped me understand constructors, object references, session
+state, and how Scheduler retrieves tasks from Owner. Automatic file editing was
+most effective for keeping the backend, UI, tests, and UML consistent. Running
+main.py and pytest provided concrete feedback instead of relying on generated code.
+
+I organized requests by design, implementation, UI, testing, and documentation
+within one ongoing chat, rather than separate chat sessions. These phase-specific
+requests kept each step focused. In future, separate sessions could make phases
+easier to revisit, with the code and UML supplying shared context.
 
 **b. Judgment and verification**
 
-I reverted the first AI rewrite of main.py so I could review my own version,
-then requested a polished output. I also asked AI to shorten an overly long
-reflection. To verify the implementation, I ran main.py and pytest. The current
-40-minute demo schedules a 10-minute feeding and a 30-minute walk and prints a
-warning because both start at 17:30. Tests cover sorting, filtering, conflicts,
-recurrence, and the Streamlit workflow.
+I rejected the more complex recurrence design that stored next_occurrence on
+Task. I asked AI to move recurrence into Scheduler and combine complete_task and
+mark_task_complete into one method. This left Task responsible for its own status
+and Scheduler responsible for creating and attaching recurring tasks.
 
-When reviewing detect_conflicts(), AI suggested keeping dictionary grouping
-instead of comparing every task pair and using an explicit loop to build warning
-messages. I accepted the loop because it is easier to read than a compact list
-comprehension. Both versions use the same grouping and sorting strategy, so this
-change improves readability rather than claiming a performance improvement.
-
----
+I also accepted a plain loop for conflict warnings instead of a compact list
+comprehension because readability mattered more than shorter code. I verified
+changes with backend tests, Streamlit interaction tests, and the terminal demo.
 
 ## 4. Testing and Verification
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+Tests cover completion, task addition and editing, sorting, filters, multi-pet
+ownership, budgets, daily and weekly recurrence, calendar boundaries, future and
+overdue tasks, duplicate completion, and exact-time conflicts. UI tests verify
+session persistence, validation, filtered tables, and resolving a conflict by
+editing a task time. These checks protect both the logic and its connection to UI.
+Additional tests verify interval search across pets, exact-fit gaps, JSON round
+trips, malformed files, and restoring tasks in a new Streamlit session.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
-
----
+My confidence is 4/5 for the implemented features. The full test suite passes,
+but I would next test partial overlaps, real-browser interaction, larger task
+lists, and reopening completed recurring tasks. Passing tests supports confidence
+in the tested behaviors; it does not prove every possible case works.
 
 ## 5. Reflection
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The same four backend classes now support both the terminal demo and Streamlit.
+Multi-pet planning, conflict warnings, recurrence, time suggestions, and JSON
+save/load work together while preserving the four-class design.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+I would extend conflict warnings to partial overlaps, support per-owner storage,
+and add broader task editing. JSON now preserves data between runs. Time
+suggestions help resolve warnings, but the owner still chooses whether to apply
+them rather than having tasks move silently.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+Being the lead architect means choosing responsibilities, keeping scope manageable,
+and checking that the UI, algorithms, tests, and documentation agree. AI helped
+with implementation, but I still needed to question unnecessary complexity,
+understand the behavior, and decide which suggestions fit the project.

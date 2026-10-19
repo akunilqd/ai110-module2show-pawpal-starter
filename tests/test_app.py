@@ -5,6 +5,9 @@ from datetime import date, timedelta
 
 from streamlit.testing.v1 import AppTest
 
+from pawpal_system import Owner, Pet, Task
+import storage
+
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -96,3 +99,110 @@ def test_completing_weekly_task_adds_followup_and_invalidates_plan():
     assert len(app.session_state["owner"].pets[0].tasks) == 2
     submit(app, "Generate schedule")
     assert app.session_state["plan"]["scheduled_tasks"] == []
+
+
+def test_overview_sorting_and_filters_use_all_pets():
+    owner = Owner("Khoa", 60)
+    dog, cat = Pet("Niki", 12), Pet("Skibidi", 6)
+    dog.add_task(Task("Walk", 20, time="18:00", priority="low"))
+    dog.add_task(Task("Done feeding", 10, time="08:00", completed=True))
+    cat.add_task(Task("Brushing", 10, time="12:00", priority="high"))
+    cat.add_task(Task("Tomorrow", 10, time="07:00", due_date=date.today() + timedelta(days=1)))
+    owner.add_pet(dog)
+    owner.add_pet(cat)
+    app = AppTest.from_file(str(APP), default_timeout=15)
+    app.session_state["owner"] = owner
+    app.run()
+    assert not app.exception
+    assert app.table[-1].value["Task"].tolist() == [
+        "Tomorrow", "Done feeding", "Brushing", "Walk",
+    ]
+
+    app.selectbox(key="status_filter").set_value("Pending")
+    app.checkbox(key="due_only").check().run()
+    assert app.table[-1].value["Task"].tolist() == ["Brushing", "Walk"]
+    app.selectbox(key="pet_filter").set_value("Niki").run()
+    assert app.table[-1].value["Task"].tolist() == ["Walk"]
+
+    app.selectbox(key="pet_filter").set_value("All pets")
+    app.selectbox(key="sort_order").set_value("Priority").run()
+    assert app.table[-1].value["Task"].tolist() == ["Brushing", "Walk"]
+    assert len(owner.get_all_tasks()) == 4
+
+
+def test_conflict_warning_can_be_resolved_by_editing_time():
+    owner = Owner("Khoa", 60)
+    for name, description in (("Niki", "Walk"), ("Skibidi", "Feeding")):
+        pet = Pet(name, 12)
+        pet.add_task(Task(description, 10, time="08:00"))
+        owner.add_pet(pet)
+    app = AppTest.from_file(str(APP), default_timeout=15)
+    app.session_state["owner"] = owner
+    app.run()
+    assert not app.exception
+    warning = app.warning[0].value
+    assert all(text in warning for text in ("08:00", "Niki", "Skibidi", "Walk", "Feeding"))
+    assert any("Change one start time" in item.value for item in app.info)
+    submit(app, "Generate schedule")
+    assert len(app.session_state["plan"]["warnings"]) == 1
+
+    task = owner.pets[0].tasks[0]
+    app.text_input(key=f"edit_time_{task.task_id}").set_value("09:00")
+    submit(app, "Update task time")
+    assert task.time == "09:00"
+    assert "plan" not in app.session_state
+    assert not app.warning
+    submit(app, "Generate schedule")
+    assert app.session_state["plan"]["warnings"] == []
+    assert len(app.session_state["plan"]["scheduled_tasks"]) == 2
+    assert app.success
+
+
+def test_suggested_time_can_be_applied_without_overlapping_other_pet():
+    owner = Owner("Khoa", 60)
+    for name in ("Niki", "Skibidi"):
+        pet = Pet(name, 12)
+        pet.add_task(Task("Care", 10, time="08:00"))
+        owner.add_pet(pet)
+    app = AppTest.from_file(str(APP), default_timeout=15)
+    app.session_state["owner"] = owner
+    app.run()
+    submit(app, "Suggest next available time")
+    task = owner.pets[0].tasks[0]
+    assert app.text_input(key=f"edit_time_{task.task_id}").value == "08:10"
+    assert task.time == "08:00"
+    submit(app, "Update task time")
+    assert task.time == "08:10"
+    assert not app.warning
+
+
+def test_save_and_load_restore_data_in_a_new_app_session(tmp_path, monkeypatch):
+    path = tmp_path / "pawpal.json"
+    monkeypatch.setattr(storage, "DATA_PATH", path)
+    owner = Owner("Saved owner", 25)
+    pet = Pet("Niki", 12)
+    pet.add_task(Task("Feeding", 10))
+    owner.add_pet(pet)
+    app = AppTest.from_file(str(APP), default_timeout=15)
+    app.session_state["owner"] = owner
+    app.run()
+    submit(app, "Save data")
+    assert path.exists()
+
+    restored_app = AppTest.from_file(str(APP), default_timeout=15).run()
+    assert restored_app.session_state["owner"].pets == []
+    submit(restored_app, "Load data")
+    restored = restored_app.session_state["owner"]
+    assert restored.name == "Saved owner"
+    assert restored_app.text_input(key="owner_name").value == "Saved owner"
+    assert len(restored.get_all_tasks()) == 1
+    assert restored.pets[0].tasks[0].task_id == pet.tasks[0].task_id
+
+
+def test_loading_missing_file_keeps_current_owner(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "DATA_PATH", tmp_path / "missing.json")
+    app = AppTest.from_file(str(APP), default_timeout=15).run()
+    owner = app.session_state["owner"]
+    submit(app, "Load data")
+    assert app.error
+    assert app.session_state["owner"] is owner

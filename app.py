@@ -1,8 +1,11 @@
 ﻿"""Streamlit interface for the PawPal+ pet-care logic layer."""
 
+from datetime import date as Date
+
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Scheduler, Task
+from storage import DATA_PATH, load_owner, save_owner
 
 
 def task_rows(entries: list[tuple[Pet, Task]]) -> list[dict]:
@@ -26,6 +29,29 @@ st.set_page_config(page_title="PawPal+", page_icon="\U0001F43E", layout="centere
 
 if "owner" not in st.session_state:
     st.session_state.owner = Owner("Khoa", 40)
+
+with st.sidebar:
+    st.subheader("Saved data")
+    st.caption("Save your pets and tasks, then load them on your next visit.")
+    if st.button("Save data", key="save_data"):
+        try:
+            save_owner(st.session_state.owner, DATA_PATH)
+        except (OSError, ValueError) as error:
+            st.error(f"Could not save data: {error}")
+        else:
+            st.success("Pets and tasks saved.")
+    if st.button("Load data", key="load_data"):
+        try:
+            restored_owner = load_owner(DATA_PATH)
+        except (OSError, ValueError) as error:
+            st.error(f"Could not load data: {error}")
+        else:
+            st.session_state.clear()
+            st.session_state.owner = restored_owner
+            st.session_state.loaded_notice = True
+            st.rerun()
+    if st.session_state.pop("loaded_notice", False):
+        st.success("Saved pets and tasks restored.")
 
 owner = st.session_state.owner
 
@@ -116,6 +142,45 @@ if owner.pets:
             st.success(f"Added task for {selected_pet.name}!")
 
 scheduler = Scheduler(owner)
+editable_tasks = scheduler.filter_tasks(completed=False)
+if editable_tasks:
+    st.subheader("Edit a task time")
+    editable_by_id = {task.task_id: (pet, task) for pet, task in editable_tasks}
+    edit_id = st.selectbox(
+        "Task to reschedule", options=list(editable_by_id),
+        format_func=lambda key: (
+            f"{editable_by_id[key][0].name}: {editable_by_id[key][1].description} "
+            f"(due {editable_by_id[key][1].due_date})"
+        ), key="edit_task_id",
+    )
+    edit_pet, edit_task = editable_by_id[edit_id]
+    edit_time_key = f"edit_time_{edit_id}"
+    if edit_time_key not in st.session_state:
+        st.session_state[edit_time_key] = edit_task.time or ""
+    if st.button("Suggest next available time"):
+        suggested_time = scheduler.find_next_available_slot(
+            edit_task.duration_minutes, date=edit_task.due_date,
+            exclude_task_id=edit_id,
+        )
+        if suggested_time is None:
+            st.warning("No free interval fits this task between 08:00 and 20:00.")
+        else:
+            st.session_state[edit_time_key] = suggested_time
+            st.info(f"Suggested {suggested_time}. Click 'Update task time' to apply it.")
+    with st.form("edit_task_time"):
+        new_time = st.text_input(
+            "New time (HH:MM)", key=edit_time_key,
+        )
+        save_time = st.form_submit_button("Update task time")
+    if save_time:
+        try:
+            edit_pet.edit_task(edit_id, time=new_time.strip())
+        except ValueError as error:
+            st.error(str(error))
+        else:
+            st.session_state.pop("plan", None)
+            st.success(f"Updated {edit_pet.name}'s task to {edit_task.time}.")
+
 pending_tasks = scheduler.get_pending_tasks()
 if pending_tasks:
     with st.form("complete_task"):
@@ -141,8 +206,43 @@ if pending_tasks:
 
 all_tasks = owner.get_all_tasks()
 if all_tasks:
-    st.write("All care tasks")
-    st.table(task_rows(all_tasks))
+    st.subheader("Task overview")
+    pet_filter = st.selectbox(
+        "Filter by pet", ["All pets", *dict.fromkeys(pet.name for pet in owner.pets)],
+        key="pet_filter",
+    )
+    status_filter = st.selectbox(
+        "Filter by status", ["All statuses", "Pending", "Completed"], key="status_filter",
+    )
+    due_only = st.checkbox("Due today or overdue only", key="due_only")
+    sort_order = st.selectbox(
+        "Sort tasks by", ["Time", "Priority", "Original order"], key="sort_order",
+    )
+    completed = {"All statuses": None, "Pending": False, "Completed": True}[status_filter]
+    visible_tasks = scheduler.filter_tasks(
+        completed=completed,
+        pet_name=None if pet_filter == "All pets" else pet_filter,
+        due_on=Date.today() if due_only else None,
+    )
+    if sort_order == "Time":
+        visible_tasks = scheduler.sort_by_time(visible_tasks)
+    elif sort_order == "Priority":
+        visible_tasks = scheduler.sort_tasks(visible_tasks)
+    st.caption(f"Showing {len(visible_tasks)} of {len(all_tasks)} care tasks.")
+    if visible_tasks:
+        st.table(task_rows(visible_tasks))
+    else:
+        st.info("No tasks match these filters. Try another pet or status.")
+
+    conflicts = scheduler.detect_conflicts()
+    if conflicts:
+        st.write("Conflicts to review across all pets")
+        for warning in conflicts:
+            st.warning(warning)
+        st.info(
+            "These tasks start together. Change one start time under 'Edit a task time', "
+            "then generate the schedule again. Tasks are not moved automatically."
+        )
 else:
     st.info("No care tasks yet.")
 
@@ -157,6 +257,10 @@ if "plan" in st.session_state:
     plan = st.session_state.plan
     for warning in plan.get("warnings", []):
         st.warning(warning)
+    if plan.get("warnings"):
+        st.caption("Update a conflicting task's time above, then generate the schedule again.")
+    elif plan["scheduled_tasks"]:
+        st.success("Schedule generated with no identical date and start-time conflicts.")
     st.write(f"Date: {plan['date']:%d/%m/%Y}")
     used, remaining = st.columns(2)
     used.metric("Scheduled time", f"{plan['total_duration']} min")

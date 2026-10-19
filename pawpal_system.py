@@ -246,6 +246,44 @@ class Scheduler:
                 )
         return warnings
 
+    def find_next_available_slot(
+        self, duration_minutes: int, date: Date | None = None,
+        earliest: str = "08:00", latest: str = "20:00",
+        exclude_task_id: str | None = None,
+    ) -> str | None:
+        """Find the earliest free interval across pets within a date's time window."""
+        _validate_minutes(duration_minutes, minimum=1)
+        day = date if date is not None else Date.today()
+        if type(day) is not Date:
+            raise ValueError("Slot date must be a datetime.date object.")
+
+        def to_minutes(time: str) -> int:
+            """Convert a validated HH:MM time to minutes after midnight."""
+            if not isinstance(time, str) or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", time) is None:
+                raise ValueError("Window times must use 24-hour HH:MM format.")
+            hour, minute = map(int, time.split(":"))
+            return hour * 60 + minute
+
+        candidate, end_of_window = to_minutes(earliest), to_minutes(latest)
+        if candidate >= end_of_window:
+            raise ValueError("Earliest time must be before latest time.")
+        busy_intervals = []
+        for _, task in self.filter_tasks(completed=False):
+            if task.due_date == day and task.time is not None and task.task_id != exclude_task_id:
+                start = to_minutes(task.time)
+                busy_intervals.append((start, start + task.duration_minutes))
+
+        for start, end in sorted(busy_intervals):
+            if candidate + duration_minutes > end_of_window:
+                return None
+            if candidate + duration_minutes <= start:
+                return f"{candidate // 60:02d}:{candidate % 60:02d}"
+            candidate = max(candidate, end)
+
+        if candidate + duration_minutes <= end_of_window:
+            return f"{candidate // 60:02d}:{candidate % 60:02d}"
+        return None
+
     def generate_plan(self, date: Date | None = None) -> dict:
         """Select due tasks within the time budget and report conflicts without moving tasks."""
         day = date if date is not None else Date.today()
