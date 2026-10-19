@@ -156,21 +156,43 @@ The time-sorting view uses HH:MM; the plan uses priority and duration.
 Matching dates and start times produce warnings; tasks are not moved automatically.
 ```
 
-## 🧪 Testing PawPal+
+## Testing PawPal+
+
+With the project environment activated and dependencies installed, run:
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+The tests cover task completion and addition, chronological and priority sorting,
+filtering by pet and status, exact-time conflict warnings, daily and weekly
+recurrence, date boundaries, duplicate completion, time budgets, and multi-pet
+planning. Streamlit tests also verify session persistence, input validation, and
+completing recurring tasks through the UI.
 
+Successful terminal output:
+
+```text
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.7.0
+rootdir: F:\AI CodePath\Project 02\ai110-module2show-pawpal-starter
+plugins: anyio-4.15.1
+collected 48 items
+
+test_pawpal_system.py ........                                           [ 16%]
+tests\test_app.py ...                                                    [ 22%]
+tests\test_conflicts.py ......                                           [ 35%]
+tests\test_pawpal.py ..                                                  [ 39%]
+tests\test_recurring_tasks.py .................                          [ 75%]
+tests\test_sorting_filtering.py ............                             [100%]
+
+============================= 48 passed in 5.95s ==============================
 ```
-# Paste your pytest output here
-```
+
+**Confidence Level: ★★★★☆ (4/5).** All 48 tests pass, covering the main workflows
+and important edge cases. This supports confidence in the current feature set;
+exact-time checks still miss partial overlaps, and real-browser behavior and
+large-scale performance have not been tested.
 
 ## 📐 Smarter Scheduling
 

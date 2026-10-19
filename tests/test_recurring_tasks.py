@@ -34,6 +34,23 @@ def test_recurring_completion_creates_independent_task_for_same_pet(frequency, d
     assert dog.tasks == []
 
 
+def test_daily_completion_creates_a_new_task_due_tomorrow():
+    today = date.today()
+    scheduler, dog, cat, task = setup_task(
+        frequency="daily", due_date=today - timedelta(days=2)
+    )
+
+    next_task = scheduler.mark_task_complete(task.task_id)
+
+    assert task.completed is True
+    assert next_task is not None
+    assert next_task.task_id != task.task_id
+    assert next_task.due_date == today + timedelta(days=1)
+    assert next_task.completed is False
+    assert cat.tasks == [task, next_task]
+    assert dog.tasks == []
+
+
 def test_completing_an_already_completed_task_does_not_create_another_task():
     scheduler, _, cat, task = setup_task()
     next_task = scheduler.mark_task_complete(task.task_id, task.due_date)
