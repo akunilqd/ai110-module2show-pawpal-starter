@@ -1,9 +1,30 @@
-classDiagram
-    %% Working design: update in Phase 6 to match the implementation.
-    %% Each care task is a dictionary with id, name, duration_minutes, and priority.
-    %% Each scheduled entry references its pet and task.
-    %% available_minutes is a daily time budget, not a clock-time window.
-    %% Total duration is calculated from scheduled tasks rather than stored.
+﻿classDiagram
+    %% Working design: update in Phase 6 to match the final implementation.
+    %% get_all_tasks returns (pet, task) pairs, preserving pet context.
+    %% Plans are dictionaries; frequency is descriptive, not recurrence logic.
+
+    class Task {
+        +String task_id
+        +String description
+        +int duration_minutes
+        +String frequency
+        +String priority
+        +bool completed
+        +mark_complete() void
+        +reset_completion() void
+    }
+
+    class Pet {
+        +String name
+        +int age_months
+        +String species
+        +List~String~ care_needs
+        +List~Task~ tasks
+        +add_task(task) void
+        +edit_task(task_id, description, duration_minutes, frequency, priority) void
+        +remove_task(task_id) void
+        +update_care_needs(needs) void
+    }
 
     class Owner {
         +String name
@@ -14,38 +35,18 @@ classDiagram
         +add_pet(pet) void
         +remove_pet(pet) void
         +update_preference(key, value) void
-    }
-
-    class Pet {
-        +String name
-        +int age_months
-        +List~String~ care_needs
-        +List~Dictionary~ care_tasks
-        +add_task(task) void
-        +edit_task(task_id, updates) void
-        +remove_task(task_id) void
-        +update_care_needs(needs) void
-    }
-
-    class DailyPlan {
-        +Date date
-        +int available_minutes
-        +List~Dictionary~ scheduled_tasks
-        +List~Dictionary~ unscheduled_tasks
-        +String explanation
-        +add_task(pet, task) void
-        +get_total_duration() int
-        +get_remaining_minutes() int
-        +explain_plan() String
+        +get_all_tasks() List
     }
 
     class Scheduler {
-        +sort_tasks(tasks, preferences) List
-        +generate_plan(owner, date) DailyPlan
+        +Owner owner
+        +get_pending_tasks() List
+        +sort_tasks(tasks) List
+        +generate_plan(date) Dictionary
+        +complete_task(task_id) void
     }
 
     Owner "1" o-- "0..*" Pet : cares for
-    Scheduler ..> Owner : reads availability and preferences
-    Scheduler ..> Pet : reads care tasks
-    Scheduler ..> DailyPlan : creates
-    DailyPlan ..> Pet : references pets in scheduled entries
+    Pet "1" o-- "0..*" Task : has care tasks
+    Scheduler --> Owner : retrieves tasks via get_all_tasks
+    Scheduler ..> Task : sorts and completes

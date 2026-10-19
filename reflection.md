@@ -4,13 +4,28 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My design uses four classes:
+
+- **Owner:** Manages available time, preferences, and pets.
+- **Pet:** Stores pet information and manages care needs and tasks.
+- **DailyPlan:** Holds scheduled and unscheduled tasks, calculates remaining time,
+  and explains the plan.
+- **Scheduler:** Sorts tasks and creates a plan using availability and preferences.
+
+An Owner has Pets, and each planned task references its Pet. The Scheduler reads
+these objects without duplicating their data.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+I renamed `time` to `available_minutes` for clarity, added `edit_task()` to support
+editing, and made total duration calculated to avoid outdated values.
+
+To match Step 1, I replaced DailyPlan with Task, which stores description,
+duration, frequency, priority, and completion status. Plans are now dictionaries.
+Owner.get_all_tasks() returns every pet's tasks paired with its pet, and Scheduler
+uses this method to plan across multiple pets. The implementation validates inputs,
+tracks remaining time, and skips completed tasks. Frequency is descriptive for now;
+the UI's `title` will need mapping to Task.description when connected.
 
 ---
 
@@ -32,13 +47,21 @@
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used AI to brainstorm the UML, create and implement the classes, review their
+relationships, format the terminal schedule, and draft tests and docstrings.
+AI suggested using Owner.get_all_tasks() for multi-pet scheduling and separate
+Task objects for each pet so completion status is independent. I accepted both.
+Questions about how Scheduler retrieves tasks and how to print the plan were
+especially helpful for understanding how the objects work together.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+I reverted the first AI rewrite of main.py so I could review my own version,
+then requested a polished output. I also asked AI to shorten an overly long
+reflection. To verify the implementation, I ran main.py and pytest. With a
+40-minute budget, the demo schedules two 10-minute feeding tasks and one
+20-minute brushing task, leaving both 30-minute walks unscheduled. Tests check
+completion, task addition, multi-pet retrieval, and time-budget behavior.
 
 ---
 

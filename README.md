@@ -22,6 +22,19 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Implementation Summary
+
+The backend in `pawpal_system.py` uses four classes: `Task` stores an activity's
+description, duration, frequency, priority, and completion status; `Pet` manages its
+tasks; `Owner` manages pets and gathers their tasks through `get_all_tasks()`;
+and `Scheduler` uses that method to plan across all pets. It skips completed tasks,
+sorts by priority, and selects tasks within the owner's time budget, reporting
+scheduled tasks, tasks that did not fit, and remaining minutes.
+
+`main.py` displays the plan as terminal tables. Tests cover task management and
+multi-pet scheduling. Frequency is stored as information; automatic recurrence
+and connecting the backend to the starter Streamlit UI remain future work.
+
 ## Getting started
 
 ### Setup
@@ -44,14 +57,39 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
 
-```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+Run the terminal demo with `python main.py`:
+
+```text
+==============================================================
+PAWPAL+ | Today's Schedule
+Date: 18/10/2026 | Owner: Khoa
+Pets: 2 | Available time: 40 minutes
+==============================================================
+
+SCHEDULED TASKS
++-----+---------+----------+----------+----------+
+| No. | Pet     | Task     | Duration | Priority |
++-----+---------+----------+----------+----------+
+| 1   | niki    | Feeding  | 10 min   | High     |
+| 2   | skibidi | Feeding  | 10 min   | High     |
+| 3   | skibidi | Brushing | 20 min   | Low      |
++-----+---------+----------+----------+----------+
+
+UNSCHEDULED TASKS - NOT ENOUGH TIME
++-----+---------+------+----------+----------+
+| No. | Pet     | Task | Duration | Priority |
++-----+---------+------+----------+----------+
+| 1   | niki    | Walk | 30 min   | Medium   |
+| 2   | skibidi | Walk | 30 min   | Medium   |
++-----+---------+------+----------+----------+
+
+Scheduled: 3 tasks
+Total duration: 40 minutes
+Remaining time: 0 minutes
+
+Tasks are considered by priority. If one does not fit, the next is checked.
+Tasks with equal priority keep their original order.
 ```
 
 ## 🧪 Testing PawPal+
