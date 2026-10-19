@@ -1,8 +1,9 @@
-﻿"""PawPal+ backend. Frequency is descriptive; plans use a daily minute budget."""
+"""PawPal+ backend with dated recurring tasks and daily time-budget planning."""
 
 from __future__ import annotations
 
-from datetime import date as Date
+from datetime import date as Date, timedelta
+import re
 from uuid import uuid4
 
 
@@ -24,6 +25,8 @@ class Task:
         frequency: str = "daily",
         priority: str = "medium",
         completed: bool = False,
+        time: str | None = None,
+        due_date: Date | None = None,
     ) -> None:
         """Initialize a validated care task with a unique ID."""
         if not description.strip():
@@ -35,19 +38,28 @@ class Task:
             raise ValueError("Priority must be high, medium, or low.")
         if type(completed) is not bool:
             raise ValueError("Completion status must be a boolean.")
+        if time is not None and (
+            not isinstance(time, str)
+            or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", time) is None
+        ):
+            raise ValueError("Time must use 24-hour HH:MM format, such as 08:30.")
+        if due_date is not None and type(due_date) is not Date:
+            raise ValueError("Due date must be a datetime.date object.")
         self.task_id = uuid4().hex
         self.description = description.strip()
         self.duration_minutes = duration_minutes
-        self.frequency = frequency.strip()
+        self.frequency = frequency.strip().casefold()
         self.priority = priority
         self.completed = completed
+        self.time = time
+        self.due_date = due_date if due_date is not None else Date.today()
 
     def mark_complete(self) -> None:
-        """Mark this task as completed."""
+        """Mark this task as completed; Scheduler handles recurring tasks."""
         self.completed = True
 
     def reset_completion(self) -> None:
-        """Make this task available again for a new care cycle."""
+        """Reset this task's status to unfinished."""
         self.completed = False
 
 
@@ -89,6 +101,8 @@ class Pet:
         duration_minutes: int | None = None,
         frequency: str | None = None,
         priority: str | None = None,
+        time: str | None = None,
+        due_date: Date | None = None,
     ) -> None:
         """Validate and update task details while preserving its ID and status."""
         task = self._find_task(task_id)
@@ -99,11 +113,15 @@ class Pet:
             task.frequency if frequency is None else frequency,
             task.priority if priority is None else priority,
             task.completed,
+            task.time if time is None else time,
+            task.due_date if due_date is None else due_date,
         )
         task.description = updated.description
         task.duration_minutes = updated.duration_minutes
         task.frequency = updated.frequency
         task.priority = updated.priority
+        task.time = updated.time
+        task.due_date = updated.due_date
 
     def remove_task(self, task_id: str) -> None:
         """Remove this pet's task with the given ID."""
@@ -164,13 +182,38 @@ class Scheduler:
         """Connect the scheduler to the owner whose pets need care."""
         self.owner = owner
 
-    def get_pending_tasks(self) -> list[tuple[Pet, Task]]:
-        """Retrieve unfinished tasks across all pets through Owner.get_all_tasks()."""
+    def get_pending_tasks(self, date: Date | None = None) -> list[tuple[Pet, Task]]:
+        """Retrieve unfinished tasks due on or before the given day, defaulting to today."""
+        day = date if date is not None else Date.today()
+        return self.filter_tasks(completed=False, due_on=day)
+
+    def filter_tasks(
+        self, completed: bool | None = None, pet_name: str | None = None,
+        due_on: Date | None = None,
+    ) -> list[tuple[Pet, Task]]:
+        """Filter tasks by status, exact pet name, and optional latest due date."""
+        if completed is not None and type(completed) is not bool:
+            raise ValueError("Completion filter must be True, False, or None.")
+        if due_on is not None and type(due_on) is not Date:
+            raise ValueError("Due-date filter must be a datetime.date object.")
+        name = pet_name.strip().casefold() if pet_name is not None else None
         return [
             (pet, task)
             for pet, task in self.owner.get_all_tasks()
-            if not task.completed
+            if (completed is None or task.completed == completed)
+            and (name is None or pet.name.casefold() == name)
+            and (due_on is None or task.due_date <= due_on)
         ]
+
+    def sort_by_time(
+        self, tasks: list[tuple[Pet, Task]] | None = None
+    ) -> list[tuple[Pet, Task]]:
+        """Return tasks ordered by HH:MM time, placing tasks without a time last."""
+        entries = self.owner.get_all_tasks() if tasks is None else tasks
+        # Zero-padded HH:MM strings sort in chronological order.
+        return sorted(
+            entries, key=lambda entry: (entry[1].time is None, entry[1].time or "")
+        )
 
     def sort_tasks(self, tasks: list[tuple[Pet, Task]]) -> list[tuple[Pet, Task]]:
         """Sort by priority, preserving input order unless shorter is preferred."""
@@ -183,12 +226,33 @@ class Scheduler:
             ),
         )
 
+    def detect_conflicts(
+        self, tasks: list[tuple[Pet, Task]] | None = None
+    ) -> list[str]:
+        """Group unfinished tasks by due date and start time and return conflict warnings."""
+        entries = self.owner.get_all_tasks() if tasks is None else tasks
+        slots: dict[tuple[Date, str], list[str]] = {}
+        for pet, task in entries:
+            if task.completed or task.time is None:
+                continue
+            slot = (task.due_date, task.time)
+            slots.setdefault(slot, []).append(f"{pet.name}: {task.description}")
+
+        warnings = []
+        for (day, time), activities in sorted(slots.items()):
+            if len(activities) > 1:
+                warnings.append(
+                    f"Time conflict on {day} at {time}: {'; '.join(activities)}."
+                )
+        return warnings
+
     def generate_plan(self, date: Date | None = None) -> dict:
-        """Plan without changing task completion or owner availability."""
+        """Select due tasks within the time budget and report conflicts without moving tasks."""
+        day = date if date is not None else Date.today()
         remaining = self.owner.available_minutes
         scheduled = []
         unscheduled = []
-        for pet, task in self.sort_tasks(self.get_pending_tasks()):
+        for pet, task in self.sort_tasks(self.get_pending_tasks(day)):
             entry = {"pet": pet, "task": task}
             if task.duration_minutes <= remaining:
                 scheduled.append(entry)
@@ -198,13 +262,16 @@ class Scheduler:
 
         total = self.owner.available_minutes - remaining
         return {
-            "date": date if date is not None else Date.today(),
+            "date": day,
             "scheduled_tasks": scheduled,
             "unscheduled_tasks": unscheduled,
             "total_duration": total,
             "remaining_minutes": remaining,
+            "warnings": self.detect_conflicts([
+                (entry["pet"], entry["task"]) for entry in scheduled
+            ]),
             "explanation": (
-                f"Scheduled {len(scheduled)} unfinished tasks by priority using "
+                f"Scheduled {len(scheduled)} unfinished tasks due by {day} by priority using "
                 f"{total} of {self.owner.available_minutes} available minutes. "
                 f"Shorter tasks break priority ties: "
                 f"{self.owner.preferences['prefer_short_tasks']}. "
@@ -212,10 +279,29 @@ class Scheduler:
             ),
         }
 
-    def complete_task(self, task_id: str) -> None:
-        """Complete a task belonging to any of the owner's pets."""
-        for _, task in self.owner.get_all_tasks():
+    def mark_task_complete(
+        self, task_id: str, completed_on: Date | None = None
+    ) -> Task | None:
+        """Complete an unfinished task and add its daily or weekly repeat to the pet."""
+        if completed_on is not None and type(completed_on) is not Date:
+            raise ValueError("Completion date must be a datetime.date object.")
+        for pet, task in self.owner.get_all_tasks():
             if task.task_id == task_id:
+                if task.completed:
+                    return None
+
+                next_task = None
+                interval = {"daily": 1, "weekly": 7}.get(task.frequency)
+                if interval is not None:
+                    today = completed_on if completed_on is not None else Date.today()
+                    next_task = Task(
+                        task.description, task.duration_minutes,
+                        frequency=task.frequency, priority=task.priority,
+                        time=task.time, due_date=today + timedelta(days=interval),
+                    )
+
                 task.mark_complete()
-                return
+                if next_task is not None:
+                    pet.add_task(next_task)
+                return next_task
         raise ValueError(f"Task {task_id!r} was not found for this owner.")

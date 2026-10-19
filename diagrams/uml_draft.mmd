@@ -1,15 +1,17 @@
-﻿classDiagram
+classDiagram
     %% Working design: update in Phase 6 to match the final implementation.
     %% get_all_tasks returns (pet, task) pairs, preserving pet context.
-    %% Plans are dictionaries; frequency is descriptive, not recurrence logic.
+    %% Plans are dictionaries; daily/weekly completion creates a dated successor.
 
     class Task {
         +String task_id
         +String description
         +int duration_minutes
+        +String time
         +String frequency
         +String priority
         +bool completed
+        +Date due_date
         +mark_complete() void
         +reset_completion() void
     }
@@ -21,7 +23,7 @@
         +List~String~ care_needs
         +List~Task~ tasks
         +add_task(task) void
-        +edit_task(task_id, description, duration_minutes, frequency, priority) void
+        +edit_task(task_id, description, duration_minutes, frequency, priority, time, due_date) void
         +remove_task(task_id) void
         +update_care_needs(needs) void
     }
@@ -40,10 +42,13 @@
 
     class Scheduler {
         +Owner owner
-        +get_pending_tasks() List
+        +get_pending_tasks(date) List
+        +filter_tasks(completed, pet_name, due_on) List
+        +sort_by_time(tasks) List
         +sort_tasks(tasks) List
+        +detect_conflicts(tasks) List
         +generate_plan(date) Dictionary
-        +complete_task(task_id) void
+        +mark_task_complete(task_id, completed_on) Task
     }
 
     Owner "1" o-- "0..*" Pet : cares for

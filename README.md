@@ -31,9 +31,24 @@ and `Scheduler` uses that method to plan across all pets. It skips completed tas
 sorts by priority, and selects tasks within the owner's time budget, reporting
 scheduled tasks, tasks that did not fit, and remaining minutes.
 
-`main.py` displays the plan as terminal tables. Tests cover task management and
-multi-pet scheduling. Frequency is stored as information; automatic recurrence
-and connecting the backend to the starter Streamlit UI remain future work.
+`main.py` displays the plan as terminal tables, including time sorting and filtering.
+`app.py` connects the backend to Streamlit and keeps the owner in session state.
+Completing a daily or weekly task through `Scheduler.mark_task_complete(task_id)`
+adds a separate unfinished occurrence to the same pet, preserving the original as
+completed. Its due date is one or seven days after the completion date (today by
+default). Repeated completion does not create duplicates. Other
+frequencies do not repeat automatically. Plans include overdue tasks and exclude
+future occurrences. Tests cover task management, recurrence, and multi-pet planning.
+
+`Task.mark_complete()` only changes completion status. `Scheduler` handles
+recurrence: it skips completed tasks, completes an unfinished task, and adds its
+next daily or weekly occurrence. Use the Scheduler method for recurring tasks.
+Tasks keep their time, duration, and priority. `Scheduler.detect_conflicts()` groups
+unfinished tasks by due date and start time, returning warning messages when a
+slot is shared by tasks for the same pet or different pets. Plans include these
+warnings for selected tasks; the terminal demo and Streamlit display them without
+stopping or moving tasks. This lightweight check detects identical start times;
+overlapping durations with different start times are not checked.
 
 ## Getting started
 
@@ -63,33 +78,82 @@ Run the terminal demo with `python main.py`:
 ```text
 ==============================================================
 PAWPAL+ | Today's Schedule
-Date: 18/10/2026 | Owner: Khoa
+Date: 19/10/2026 | Owner: Khoa
 Pets: 2 | Available time: 40 minutes
 ==============================================================
 
+ORIGINAL ORDER
++-----+---------+----------+------------+-------+----------+----------+-----------+
+| No. | Pet     | Task     | Due date   | Time  | Duration | Priority | Status    |
++-----+---------+----------+------------+-------+----------+----------+-----------+
+| 1   | niki    | Walk     | 2026-10-19 | 17:30 | 30 min   | Medium   | Pending   |
+| 2   | niki    | Feeding  | 2026-10-19 | 08:00 | 10 min   | High     | Completed |
+| 3   | niki    | Feeding  | 2026-10-20 | 08:00 | 10 min   | High     | Pending   |
+| 4   | skibidi | Feeding  | 2026-10-19 | 17:30 | 10 min   | High     | Pending   |
+| 5   | skibidi | Walk     | 2026-10-19 | 18:00 | 30 min   | Medium   | Pending   |
+| 6   | skibidi | Brushing | 2026-10-19 | 12:15 | 20 min   | Low      | Pending   |
++-----+---------+----------+------------+-------+----------+----------+-----------+
+
+ALL TASKS SORTED BY TIME
++-----+---------+----------+------------+-------+----------+----------+-----------+
+| No. | Pet     | Task     | Due date   | Time  | Duration | Priority | Status    |
++-----+---------+----------+------------+-------+----------+----------+-----------+
+| 1   | niki    | Feeding  | 2026-10-19 | 08:00 | 10 min   | High     | Completed |
+| 2   | niki    | Feeding  | 2026-10-20 | 08:00 | 10 min   | High     | Pending   |
+| 3   | skibidi | Brushing | 2026-10-19 | 12:15 | 20 min   | Low      | Pending   |
+| 4   | niki    | Walk     | 2026-10-19 | 17:30 | 30 min   | Medium   | Pending   |
+| 5   | skibidi | Feeding  | 2026-10-19 | 17:30 | 10 min   | High     | Pending   |
+| 6   | skibidi | Walk     | 2026-10-19 | 18:00 | 30 min   | Medium   | Pending   |
++-----+---------+----------+------------+-------+----------+----------+-----------+
+
+COMPLETED TASKS
++-----+------+---------+------------+-------+----------+----------+-----------+
+| No. | Pet  | Task    | Due date   | Time  | Duration | Priority | Status    |
++-----+------+---------+------------+-------+----------+----------+-----------+
+| 1   | niki | Feeding | 2026-10-19 | 08:00 | 10 min   | High     | Completed |
++-----+------+---------+------------+-------+----------+----------+-----------+
+
+PENDING TASKS FOR NIKI (SORTED BY TIME)
++-----+------+------+------------+-------+----------+----------+---------+
+| No. | Pet  | Task | Due date   | Time  | Duration | Priority | Status  |
++-----+------+------+------------+-------+----------+----------+---------+
+| 1   | niki | Walk | 2026-10-19 | 17:30 | 30 min   | Medium   | Pending |
++-----+------+------+------------+-------+----------+----------+---------+
+
+NEXT DAILY OCCURRENCE (EXCLUDED FROM TODAY'S PLAN)
++-----+------+---------+------------+-------+----------+----------+---------+
+| No. | Pet  | Task    | Due date   | Time  | Duration | Priority | Status  |
++-----+------+---------+------------+-------+----------+----------+---------+
+| 1   | niki | Feeding | 2026-10-20 | 08:00 | 10 min   | High     | Pending |
++-----+------+---------+------------+-------+----------+----------+---------+
+
 SCHEDULED TASKS
-+-----+---------+----------+----------+----------+
-| No. | Pet     | Task     | Duration | Priority |
-+-----+---------+----------+----------+----------+
-| 1   | niki    | Feeding  | 10 min   | High     |
-| 2   | skibidi | Feeding  | 10 min   | High     |
-| 3   | skibidi | Brushing | 20 min   | Low      |
-+-----+---------+----------+----------+----------+
++-----+---------+---------+------------+-------+----------+----------+---------+
+| No. | Pet     | Task    | Due date   | Time  | Duration | Priority | Status  |
++-----+---------+---------+------------+-------+----------+----------+---------+
+| 1   | skibidi | Feeding | 2026-10-19 | 17:30 | 10 min   | High     | Pending |
+| 2   | niki    | Walk    | 2026-10-19 | 17:30 | 30 min   | Medium   | Pending |
++-----+---------+---------+------------+-------+----------+----------+---------+
 
 UNSCHEDULED TASKS - NOT ENOUGH TIME
-+-----+---------+------+----------+----------+
-| No. | Pet     | Task | Duration | Priority |
-+-----+---------+------+----------+----------+
-| 1   | niki    | Walk | 30 min   | Medium   |
-| 2   | skibidi | Walk | 30 min   | Medium   |
-+-----+---------+------+----------+----------+
++-----+---------+----------+------------+-------+----------+----------+---------+
+| No. | Pet     | Task     | Due date   | Time  | Duration | Priority | Status  |
++-----+---------+----------+------------+-------+----------+----------+---------+
+| 1   | skibidi | Walk     | 2026-10-19 | 18:00 | 30 min   | Medium   | Pending |
+| 2   | skibidi | Brushing | 2026-10-19 | 12:15 | 20 min   | Low      | Pending |
++-----+---------+----------+------------+-------+----------+----------+---------+
 
-Scheduled: 3 tasks
+CONFLICT WARNINGS
+WARNING: Time conflict on 2026-10-19 at 17:30: skibidi: Feeding; niki: Walk.
+
+Scheduled: 2 tasks
 Total duration: 40 minutes
 Remaining time: 0 minutes
 
 Tasks are considered by priority. If one does not fit, the next is checked.
 Tasks with equal priority keep their original order.
+The time-sorting view uses HH:MM; the plan uses priority and duration.
+Matching dates and start times produce warnings; tasks are not moved automatically.
 ```
 
 ## 🧪 Testing PawPal+
@@ -110,14 +174,21 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+The Scheduler retrieves tasks across all pets through `Owner.get_all_tasks()`.
 
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Feature | Method(s) | Behavior |
+|---------|-----------|----------|
+| Time sorting | `Scheduler.sort_by_time()` | Sorts validated `HH:MM` start times; untimed tasks go last. Equal times keep their original order. |
+| Priority sorting | `Scheduler.sort_tasks()` | Orders high, medium, then low priority. Optionally prefers shorter durations when priorities tie. |
+| Filtering | `Scheduler.filter_tasks()` | Filters by completion status, pet name (case insensitive), or latest due date; filters can be combined. |
+| Daily planning | `Scheduler.get_pending_tasks()`, `Scheduler.generate_plan()` | Includes unfinished tasks due by the selected date. Fits tasks into the minute budget and continues after a task does not fit. |
+| Conflict warnings | `Scheduler.detect_conflicts()` | Groups unfinished tasks by due date and start time across pets. Returns warnings without stopping or rescheduling; plans report conflicts among selected tasks. |
+| Recurring tasks | `Scheduler.mark_task_complete()` | Completes the original and adds a new task to the same pet: daily = completion date + 1 day, weekly = + 7 days. Already completed tasks are skipped; other frequencies do not repeat. |
+
+Time sorting is a separate view; the daily plan selects tasks by priority and
+duration. Conflict detection checks exact start-time matches, so partial overlaps
+are not detected. The implementation keeps explicit loops where they make the
+algorithm easier to read. Tasks carry dates and times but no timezone information.
 
 ## 📸 Demo Walkthrough
 

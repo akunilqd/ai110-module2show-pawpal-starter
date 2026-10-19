@@ -24,7 +24,7 @@ class PawPalTests(unittest.TestCase):
         with patch.object(
             self.owner, "get_all_tasks", wraps=self.owner.get_all_tasks
         ) as get_tasks:
-            plan = self.scheduler.generate_plan(date(2026, 10, 18))
+            plan = self.scheduler.generate_plan(date.today())
         get_tasks.assert_called_once_with()
         self.assertEqual(
             [(entry["pet"], entry["task"]) for entry in plan["scheduled_tasks"]],
@@ -32,7 +32,7 @@ class PawPalTests(unittest.TestCase):
         )
         self.assertEqual(plan["total_duration"], 30)
         self.assertEqual(plan["remaining_minutes"], 0)
-        self.assertEqual(plan["date"], date(2026, 10, 18))
+        self.assertEqual(plan["date"], date.today())
         self.assertEqual(self.owner.available_minutes, 30)
         self.assertFalse(self.feed.completed)
 
@@ -44,13 +44,14 @@ class PawPalTests(unittest.TestCase):
         self.assertEqual(plan["remaining_minutes"], 10)
 
     def test_completion_across_pets_and_reset(self):
-        self.scheduler.complete_task(self.feed.task_id)
+        self.scheduler.mark_task_complete(self.feed.task_id)
         self.assertEqual(self.scheduler.get_pending_tasks(), [(self.dog, self.walk)])
-        self.assertEqual(len(self.owner.get_all_tasks()), 2)
+        # Completing a daily task also registers tomorrow's unfinished occurrence.
+        self.assertEqual(len(self.owner.get_all_tasks()), 3)
         self.feed.reset_completion()
         self.assertEqual(len(self.scheduler.get_pending_tasks()), 2)
         with self.assertRaises(ValueError):
-            self.scheduler.complete_task("missing")
+            self.scheduler.mark_task_complete("missing")
 
     def test_preference_breaks_priority_ties(self):
         self.cat.edit_task(self.feed.task_id, priority="medium")
