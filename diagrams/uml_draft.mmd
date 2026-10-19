@@ -1,0 +1,51 @@
+classDiagram
+    %% Working design: update in Phase 6 to match the implementation.
+    %% Each care task is a dictionary with id, name, duration_minutes, and priority.
+    %% Each scheduled entry references its pet and task.
+    %% available_minutes is a daily time budget, not a clock-time window.
+    %% Total duration is calculated from scheduled tasks rather than stored.
+
+    class Owner {
+        +String name
+        +int available_minutes
+        +Dictionary preferences
+        +List~Pet~ pets
+        +update_available_time(minutes) void
+        +add_pet(pet) void
+        +remove_pet(pet) void
+        +update_preference(key, value) void
+    }
+
+    class Pet {
+        +String name
+        +int age_months
+        +List~String~ care_needs
+        +List~Dictionary~ care_tasks
+        +add_task(task) void
+        +edit_task(task_id, updates) void
+        +remove_task(task_id) void
+        +update_care_needs(needs) void
+    }
+
+    class DailyPlan {
+        +Date date
+        +int available_minutes
+        +List~Dictionary~ scheduled_tasks
+        +List~Dictionary~ unscheduled_tasks
+        +String explanation
+        +add_task(pet, task) void
+        +get_total_duration() int
+        +get_remaining_minutes() int
+        +explain_plan() String
+    }
+
+    class Scheduler {
+        +sort_tasks(tasks, preferences) List
+        +generate_plan(owner, date) DailyPlan
+    }
+
+    Owner "1" o-- "0..*" Pet : cares for
+    Scheduler ..> Owner : reads availability and preferences
+    Scheduler ..> Pet : reads care tasks
+    Scheduler ..> DailyPlan : creates
+    DailyPlan ..> Pet : references pets in scheduled entries
